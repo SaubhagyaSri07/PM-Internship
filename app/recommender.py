@@ -18,14 +18,21 @@ for k in WEIGHTS:
     WEIGHTS[k] = WEIGHTS[k] / _total
 
 
+# --- top-level tokenizer (PICKLABLE) ---
+def skill_tokenizer(s):
+    """
+    Tokenize skills by comma while preserving multi-word skills.
+    This is defined at module level so objects using it can be pickled.
+    """
+    return [tok.strip() for tok in str(s).split(',') if tok.strip()]
+
+
 def build_tfidf(df, max_features_desc=5000, max_features_skill=1000):
     desc_corpus = (df['Title'].fillna('') + ' ' + df['Description'].fillna('')).tolist()
     vec_desc = TfidfVectorizer(ngram_range=(1, 2), max_features=max_features_desc)
     mat_desc = vec_desc.fit_transform(desc_corpus)
 
-    def skill_tokenizer(s):
-        return [tok.strip() for tok in str(s).split(',') if tok.strip()]
-
+    # Use the top-level tokenizer; set token_pattern=None to silence sklearn warnings
     vec_skill = TfidfVectorizer(tokenizer=skill_tokenizer, lowercase=True, token_pattern=None,
                                 max_features=max_features_skill)
     mat_skill = vec_skill.fit_transform(df['Skills'].fillna('').tolist())
@@ -51,31 +58,76 @@ def candidate_text_for_skills(candidate):
     return ', '.join([s.strip() for s in skills if s.strip()])
 
 
+# Education groups mapping (same as before)
+EDU_GROUPS = {
+    'undergraduate': {
+        'b.tech', 'btech', 'b.e', 'be', 'b.sc', 'bsc', 'b.a', 'ba', 'bba', 'bcom', 'b.com', 'bca', 'bachelor', 'bachelors'
+    },
+    'post graduate': {
+        'm.tech', 'mtech', 'm.sc', 'msc', 'm.a', 'ma', 'mba', 'mcom', 'masters', 'master'
+    },
+    'phd': {'phd', 'doctor', 'doctoral'}
+}
+
+
+def normalize_edu_string(s):
+    if not s:
+        return ''
+    s = str(s).lower()
+    s = s.replace('.', ' ').replace('/', ' ').replace('-', ' ')
+    s = ' '.join(s.split())
+    return s.strip()
+
+
+def internship_edu_tokens(intern_req_edu):
+    r = normalize_edu_string(intern_req_edu)
+    tokens = set()
+    for part in [p.strip() for p in r.replace(',', ' ').split() if p.strip()]:
+        tokens.add(part)
+    return tokens
+
+
 def education_match_score(candidate_edu, intern_req_edu):
-    """
-    Simple education matching:
-    - if internship says 'any' or '' -> treat as match (score 1).
-    - if candidate_edu equals intern_req_edu -> 1
-    - if candidate_edu contains intern_req_edu or vice-versa -> 0.8
-    - else 0
-    """
-    if not intern_req_edu or intern_req_edu.strip() == '' or intern_req_edu.strip() == 'any':
+    intern_req = (intern_req_edu or '').strip().lower()
+    if not intern_req or intern_req in ('any', 'any graduate', 'any degree'):
         return 1.0
-    if not candidate_edu:
+
+    cand = normalize_edu_string(candidate_edu or '')
+    intern_tokens = internship_edu_tokens(intern_req)
+
+    if not cand:
+        return 1.0
+
+    if cand in EDU_GROUPS:
+        group = EDU_GROUPS[cand]
+        for t in intern_tokens:
+            if t in group:
+                return 1.0
+        for t in intern_tokens:
+            for g in group:
+                if g in t or t in g:
+                    return 1.0
         return 0.0
-    c = candidate_edu.lower().strip()
-    r = intern_req_edu.lower().strip()
-    if c == r:
-        return 1.0
-    if c in r or r in c:
-        return 0.8
+
+    cand_token = cand.replace(' ', '')
+    for t in intern_tokens:
+        if cand_token == t.replace(' ', ''):
+            return 1.0
+        if cand_token in t or t in cand_token:
+            return 0.8
+
+    for group_name, group_tokens in EDU_GROUPS.items():
+        if any(t in group_tokens or any(gt in t or t in gt for gt in group_tokens) for t in intern_tokens):
+            if cand in group_name:
+                return 1.0
+            return 0.5
+
     return 0.0
 
 
 def get_recommendations(df, vec_desc, mat_desc, vec_skill, mat_skill, candidate, top_k=5):
     df_local = df.copy().reset_index(drop=True)
 
-    # Candidate vectors
     cand_desc_vec = vec_desc.transform([candidate_text_for_desc(candidate)])
     cand_skill_vec = vec_skill.transform([candidate_text_for_skills(candidate)])
 
@@ -84,7 +136,7 @@ def get_recommendations(df, vec_desc, mat_desc, vec_skill, mat_skill, candidate,
 
     cand_sectors = [s.lower().strip() for s in candidate.get('sector', [])]
     cand_locations = [l.lower().strip() for l in candidate.get('location', [])]
-    cand_education = candidate.get('education', '').lower().strip() if candidate.get('education') else ''
+    cand_education = (candidate.get('education') or '').lower().strip()
 
     scores = []
     sector_matches = []
@@ -114,8 +166,6 @@ def get_recommendations(df, vec_desc, mat_desc, vec_skill, mat_skill, candidate,
         scores.append(final)
 
     scores = np.array(scores)
-    # Do NOT min-max normalize here: weights already keep score in 0-1 range (approx)
-    # Convert to 0-100 percentage
     perc_scores = scores * 100.0
 
     df_local['score'] = perc_scores
@@ -125,8 +175,6 @@ def get_recommendations(df, vec_desc, mat_desc, vec_skill, mat_skill, candidate,
     df_local['location_match'] = location_matches
     df_local['education_score'] = education_scores
 
-    # Sorting with deterministic tie-breakers:
-    # primary: score, then higher skill_sim, then sector_match, then location_match, then desc_sim
     top = df_local.sort_values(
         by=['score', 'skill_sim', 'sector_match', 'location_match', 'desc_sim'],
         ascending=[False, False, False, False, False]
@@ -151,5 +199,4 @@ def get_recommendations(df, vec_desc, mat_desc, vec_skill, mat_skill, candidate,
 
     cols = ['Internship_ID', 'Title', 'Company', 'Location', 'Skills', 'Sector',
             'Required_Education', 'score', 'explain', 'skill_sim', 'desc_sim']
-    # return columns that exist
     return top[[c for c in cols if c in top.columns]]
