@@ -1,0 +1,8 @@
+pandas
+numpy
+scikit-learn
+fastapi
+uvicorn[standard]
+streamlit
+python-multipart   # if file uploads needed
+requests
