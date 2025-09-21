@@ -255,9 +255,34 @@ def handle_feedback(internship_id, title, score, feedback_label):
     except Exception:
         st.session_state['feedback_status'][iid_str] = 'error'
 
-# Trigger recommendations
-if st.button("Get Recommendations (apply education filter)"):
-    build_candidate_and_recommend()
+# Trigger recommendations (BIGGER + CLEAR BUTTON)
+st.markdown(
+    """
+    <style>
+    .big-recommend-btn button {
+        background-color: #0066cc;
+        color: white;
+        font-size: 18px;
+        font-weight: bold;
+        padding: 0.75em 1.5em;
+        border-radius: 10px;
+        width: 100%;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
+    }
+    .big-recommend-btn button:hover {
+        background-color: #0052a3;
+        transform: scale(1.02);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+with st.container():
+    recommend_clicked = st.container()
+    with recommend_clicked:
+        if st.button("Get Recommendations", key="big_recommend", help="Generate tailored internship suggestions", use_container_width=True):
+            build_candidate_and_recommend()
 
 # show message if any
 if st.session_state.get('message'):
