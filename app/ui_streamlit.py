@@ -21,7 +21,7 @@ OFFLINE_UI = {
            "message_select_field": "Please select a field to proceed.", "why_recommended": "Why Recommended",
            "backend": "Backend", "gemini": "Gemini AI"},
     "hi": {"title":"InternLink","education":"शैक्षिक स्तर","undergrad_field":"अंडरग्रेजुएट फ़ील्ड (अनिवार्य)",
-           "postgrad_field":"पोस्टग्रेजुएट फ़ील्ड (अनिवार्य)","skills":"आपके कौशल","sectors":"पसंदीदा क्षेत्र","locations":"पसंदीदा स्थान",
+           "postgrad_field":"पोस्टग्रेज्यूएट फ़ील्ड (अनिवार्य)","skills":"आपके कौशल","sectors":"पसंदीदा क्षेत्र","locations":"पसंदीदा स्थान",
            "get_recs":"सिफारिशें प्राप्त करें","no_recs":"कोई सिफारिशें नहीं बनीं। इनपुट भरें और 'सिफारिशें प्राप्त करें' पर क्लिक करें।",
            "message_select_field":"कृपया आगे बढ़ने के लिए एक फ़ील्ड चुनें।","why_recommended":"सुझाई क्यों गई",
            "backend":"बैकेंड","gemini":"जेमिनी एआई"},
@@ -208,10 +208,10 @@ with col_right:
     else:
         st.markdown("<div style='display:flex;align-items:center;gap:6px;margin-top:6px;'><span class='dot-yellow'></span><strong>Gemini AI: <span style='color:orange'>Unavailable</span></strong></div>", unsafe_allow_html=True)
 
-# ----- Title / hero ----- #
+# ----- Title / hero -----
 st.markdown("<div class='hero'><h1 style='display:inline-block;margin-right:12px'>{}</h1><p>Simple, mobile-friendly internship suggestions — skills-first</p></div>".format(ui_str("title", LANG)), unsafe_allow_html=True)
 
-# ----- Inputs ----- #
+# ----- Inputs -----
 education_level_options_internal = ["any","10th","12th","undergraduate","post graduate","phd","others"]
 education_display = [x.title() if x.isalpha() else x.upper() for x in education_level_options_internal]
 education_map = dict(zip(education_display, education_level_options_internal))
@@ -246,10 +246,10 @@ all_locations_internal = sorted(df["Location"].dropna().unique()) if "Location" 
 all_locations_display = [l.title() for l in all_locations_internal]
 location_map = dict(zip(all_locations_display, all_locations_internal))
 
-default_skill_display = [s.title() for s in all_skills_internal if s in ("python","sql")]
-skills_selected_display = st.multiselect(ui_str("skills", LANG), options=all_skills_display, default=default_skill_display)
-sectors_selected_display = st.multiselect(ui_str("sectors", LANG), options=all_sectors_display, default=[s.title() for s in all_sectors_internal if s=="it"])
-locations_selected_display = st.multiselect(ui_str("locations", LANG), options=all_locations_display, default=[l.title() for l in all_locations_internal if l=="jaipur"])
+# <-- Removed default selections so multiselects start empty -->
+skills_selected_display = st.multiselect(ui_str("skills", LANG), options=all_skills_display)
+sectors_selected_display = st.multiselect(ui_str("sectors", LANG), options=all_sectors_display)
+locations_selected_display = st.multiselect(ui_str("locations", LANG), options=all_locations_display)
 
 skills_selected = [skill_map[d] for d in skills_selected_display]
 sectors_selected = [sector_map[d] for d in sectors_selected_display]
@@ -257,12 +257,12 @@ locations_selected = [location_map[d] for d in locations_selected_display]
 
 top_k = st.slider("Number of suggestions", min_value=1, max_value=10, value=5)
 
-# ----- CTA ----- #
+# ----- CTA -----
 st.markdown("<div class='big-recommend-btn'>", unsafe_allow_html=True)
 get_btn = st.button(ui_str("get_recs", LANG), key="big_recommend")
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ----- Action ----- #
+# ----- Action -----
 if get_btn:
     if (education_level == "undergraduate" and not education_field) or (education_level == "post graduate" and not education_field):
         st.warning(ui_str("message_select_field", LANG))
@@ -302,7 +302,7 @@ if get_btn:
         st.session_state["last_recs"] = results
         st.session_state["last_candidate"] = candidate
 
-# ----- Render results ----- #
+# ----- Render results -----
 if st.session_state.get("last_recs"):
     for rec in st.session_state["last_recs"]:
         title = (rec.get("Title") or "").title()
